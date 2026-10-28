@@ -1,0 +1,87 @@
+{
+  "compiler_version": "gcc.exe (Rev6, Built by MSYS2 project) 10.2.0",
+  "debugger_version": "GNU gdb (GDB) 9.2",
+  "compile_command": "D:\\Dve-cpp\\MinGW32\\bin\\gcc.exe -g3 -O0 -fno-inline -std=c11 main.c -o program.exe",
+  "debugger_start_command": "D:\\Dve-cpp\\MinGW32\\bin\\gdb.exe --quiet --nx --interpreter=mi2",
+  "capability_results": [
+    {
+      "name": "mi2_start",
+      "passed": true,
+      "raw_request": "",
+      "raw_response": "",
+      "note": "GDB MI2 已启动"
+    },
+    {
+      "name": "breakpoint",
+      "passed": true,
+      "raw_request": "-break-insert C:\\Users\\21838\\AppData\\Local\\Temp\\probe test 8hgfqkcg\\probe.c:21",
+      "raw_response": "",
+      "note": "resolved line=21, verified=True"
+    },
+    {
+      "name": "run_to_breakpoint",
+      "passed": true,
+      "raw_request": "",
+      "raw_response": "",
+      "note": "reason=breakpoint-hit, line=21, func=main"
+    },
+    {
+      "name": "step_into",
+      "passed": true,
+      "raw_request": "",
+      "raw_response": "",
+      "note": "line=11, func=add"
+    },
+    {
+      "name": "step",
+      "passed": true,
+      "raw_request": "",
+      "raw_response": "",
+      "note": "line=13, func=add"
+    },
+    {
+      "name": "local_vars",
+      "passed": true,
+      "raw_request": "",
+      "raw_response": "",
+      "note": "variables=['a', 'b', 'values', 'p']"
+    },
+    {
+      "name": "global_vars",
+      "passed": true,
+      "raw_request": "-data-evaluate-expression \"g_total\"",
+      "raw_response": "4",
+      "note": "g_total=4"
+    },
+    {
+      "name": "array_children",
+      "passed": true,
+      "raw_request": "",
+      "raw_response": "",
+      "note": "values=[2, 5, 7]"
+    },
+    {
+      "name": "struct_children",
+      "passed": true,
+      "raw_request": "",
+      "raw_response": "",
+      "note": "p.x=-2, p.y=6422376"
+    },
+    {
+      "name": "normal_exit",
+      "passed": true,
+      "raw_request": "",
+      "raw_response": "",
+      "note": "reason=exited-normally, exit_code=None"
+    }
+  ],
+  "path_validation": {
+    "path_with_spaces": true,
+    "path_with_chinese": false,
+    "spaces_detail": "成功在含空格目录运行: C:\\Users\\21838\\AppData\\Local\\Temp\\probe test 8hgfqkcg",
+    "chinese_detail": ""
+  },
+  "failures": [],
+  "conclusion": "passed",
+  "generated_at": "2026-10-28T13:45:53.550863"
+}

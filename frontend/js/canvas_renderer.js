@@ -14,8 +14,13 @@ class CanvasRenderer {
         this._lastLayout = null;
         this._dragState = null;
         this._resizeObserver = null;
+        this._collapsedNodes = new Set();
+        this._nodeHitAreas = [];
+        this._pointerAnchors = [];
+        this._heapAnchors = [];
         this._initWheel();
         this._initDrag();
+        this._initClick();
         this._observeSize();
     }
 
@@ -96,6 +101,29 @@ class CanvasRenderer {
         this.canvas.addEventListener('pointerup', endDrag);
         this.canvas.addEventListener('pointercancel', endDrag);
         this.canvas.addEventListener('lostpointercapture', endDrag);
+    }
+
+    _initClick() {
+        this.canvas.addEventListener('click', (e) => {
+            if (!this.currentSnapshot || !this._nodeHitAreas.length) return;
+            const rect = this.canvas.getBoundingClientRect();
+            const mx = (e.clientX - rect.left) * this.width / rect.width;
+            const my = (e.clientY - rect.top) * this.height / rect.height;
+            for (const hit of this._nodeHitAreas) {
+                if (mx >= hit.x && mx <= hit.x + hit.w &&
+                    my >= hit.y && my <= hit.y + hit.h) {
+                    if (hit.collapsible) {
+                        if (this._collapsedNodes.has(hit.path)) {
+                            this._collapsedNodes.delete(hit.path);
+                        } else {
+                            this._collapsedNodes.add(hit.path);
+                        }
+                        this._draw();
+                    }
+                    return;
+                }
+            }
+        });
     }
 
     _setupCanvas() {
@@ -223,7 +251,12 @@ class CanvasRenderer {
 
         let stackContent = 30;
         frames.forEach(frame => {
-            stackContent += 26 + this._localTreeRows(frame.locals || []).length * 18 + 4;
+            const varTree = frame.variable_tree || [];
+            if (varTree.length > 0) {
+                stackContent += 26 + this._countTreeNodes(varTree) * 18 + 4;
+            } else {
+                stackContent += 26 + this._localTreeRows(frame.locals || []).length * 18 + 4;
+            }
         });
         const heapContent = 30 + heaps.length * 28;
 
@@ -272,15 +305,30 @@ class CanvasRenderer {
     }
 
     _drawStack(area, frames) {
-        this._drawSectionTitle(area, `栈区 (${frames.length}帧)`, '#388e3c');
+        const completed = Boolean(this.currentSnapshot && this.currentSnapshot.is_complete);
+        const title = frames.length === 0 && completed
+            ? '栈区（程序已结束）'
+            : `栈区 (${frames.length}帧)`;
+        this._drawSectionTitle(area, title, '#388e3c');
         const easing = 1 - Math.pow(1 - this.animProgress, 3);
         const offset = this.scrollOffsets.stack;
         this.ctx.save();
         this.ctx.beginPath();
         this.ctx.rect(area.x, area.y + 25, area.w, area.h - 25);
         this.ctx.clip();
+        this._nodeHitAreas = [];
+        this._pointerAnchors = [];
         let y = area.y + 30;
         let totalContent = 30;
+        if (frames.length === 0) {
+            this.ctx.fillStyle = '#7b8794';
+            this.ctx.font = '12px sans-serif';
+            this.ctx.fillText(
+                completed ? '程序已结束，无活动栈帧' : '暂无栈帧数据',
+                area.x + 12, y + 16
+            );
+            totalContent += 24;
+        }
         frames.forEach((frame, idx) => {
             const isLast = idx === frames.length - 1;
             let offsetY = 0;
@@ -307,33 +355,104 @@ class CanvasRenderer {
             }
             y += 26;
             totalContent += 26;
-            this._localTreeRows(frame.locals || []).forEach((row) => {
-                const lvY = y - offset;
-                if (lvY <= area.y + area.h - 10 && lvY >= area.y + 20) {
-                    if (row.kind === 'group') {
-                        this.ctx.fillStyle = '#eef4fb';
-                        this.ctx.fillRect(area.x + 8, lvY, area.w - 26, 18);
-                        this.ctx.fillStyle = '#365b7d';
-                        this.ctx.font = 'bold 11px monospace';
-                        this.ctx.fillText(`▾ ${row.name}`, area.x + 12, lvY + 13);
-                    } else {
-                        const value = row.value === 'uninitialized' ? '未初始化' : row.value;
-                        this.ctx.fillStyle = row.value === 'uninitialized' ? '#8a94a3' : '#555';
-                        this.ctx.font = '11px monospace';
-                        const branch = row.last ? '└─' : '├─';
-                        const text = `   ${branch} ${row.name}: ${row.type} = ${value}`;
-                        this.ctx.fillText(text.substring(0, 50), area.x + 10, lvY + 14);
+
+            const varTree = frame.variable_tree || [];
+            if (varTree.length > 0) {
+                const result = this._drawVariableTree(varTree, area, y, offset, 0, '');
+                y += result.height;
+                totalContent += result.height;
+            } else {
+                this._localTreeRows(frame.locals || []).forEach((row) => {
+                    const lvY = y - offset;
+                    if (lvY <= area.y + area.h - 10 && lvY >= area.y + 20) {
+                        if (row.kind === 'group') {
+                            this.ctx.fillStyle = '#eef4fb';
+                            this.ctx.fillRect(area.x + 8, lvY, area.w - 26, 18);
+                            this.ctx.fillStyle = '#365b7d';
+                            this.ctx.font = 'bold 11px monospace';
+                            this.ctx.fillText(`▾ ${row.name}`, area.x + 12, lvY + 13);
+                        } else {
+                            const value = row.value === 'uninitialized' ? '未初始化' : row.value;
+                            this.ctx.fillStyle = row.value === 'uninitialized' ? '#8a94a3' : '#555';
+                            this.ctx.font = '11px monospace';
+                            const branch = row.last ? '└─' : '├─';
+                            const text = `   ${branch} ${row.name}: ${row.type} = ${value}`;
+                            this.ctx.fillText(text.substring(0, 50), area.x + 10, lvY + 14);
+                        }
                     }
-                }
-                y += 18;
-                totalContent += 18;
-            });
+                    y += 18;
+                    totalContent += 18;
+                });
+            }
             y += 4;
             totalContent += 4;
         });
         this.contentHeights.stack = totalContent;
         this.ctx.restore();
         this._drawScrollbar(area, this.scrollOffsets.stack, this.contentHeights.stack, area.h - 30, 'stack');
+    }
+
+    _drawVariableTree(nodes, area, startY, offset, depth, parentPath) {
+        let y = startY;
+        let height = 0;
+        const indent = depth * 14;
+        nodes.forEach((node) => {
+            const path = parentPath ? `${parentPath}.${node.name}` : node.name;
+            const hasChildren = node.children && node.children.length > 0;
+            const isCollapsed = this._collapsedNodes.has(path);
+            const drawY = y - offset;
+            if (drawY <= area.y + area.h - 10 && drawY >= area.y + 20) {
+                const x = area.x + 10 + indent;
+                if (hasChildren) {
+                    this._nodeHitAreas.push({
+                        x: x, y: drawY, w: area.w - indent - 20, h: 18,
+                        path: path, collapsible: true,
+                    });
+                    this.ctx.fillStyle = '#eef4fb';
+                    this.ctx.fillRect(x, drawY, area.w - indent - 20, 18);
+                    this.ctx.fillStyle = '#365b7d';
+                    this.ctx.font = 'bold 11px monospace';
+                    const icon = isCollapsed ? '▸' : '▾';
+                    this.ctx.fillText(`${icon} ${node.name}`, x + 4, drawY + 13);
+                    if (node.type) {
+                        this.ctx.fillStyle = '#888';
+                        this.ctx.font = '10px monospace';
+                        this.ctx.fillText(node.type, x + 4 + node.name.length * 7 + 16, drawY + 13);
+                    }
+                    // Expanded aggregates show their children below; drawing the
+                    // aggregate value on top of its name/type caused text overlap.
+                } else {
+                    this.ctx.fillStyle = node.available === false ? '#8a94a3' : '#555';
+                    this.ctx.font = '11px monospace';
+                    const prefix = depth > 0 ? (depth === 1 ? '├─' : '│  ├─') : '';
+                    const value = node.available === false ? (node.unavailable_reason || '不可用') : (node.value || '');
+                    const text = `${prefix} ${node.name}: ${node.type || ''} = ${value}`;
+                    this.ctx.fillText(text.substring(0, 55), x, drawY + 14);
+                    if (node.kind === 'pointer' && node.value) {
+                        const address = node.value.match(/0x[0-9a-fA-F]+/)?.[0]?.toLowerCase();
+                        if (address) {
+                            this._pointerAnchors.push({
+                                name: node.name,
+                                address,
+                                x: area.x + area.w - 7,
+                                y: drawY + 9,
+                            });
+                        }
+                    }
+                }
+            }
+            y += 18;
+            height += 18;
+
+            if (hasChildren && !isCollapsed) {
+                const childResult = this._drawVariableTree(
+                    node.children, area, y, offset, depth + 1, path
+                );
+                y += childResult.height;
+                height += childResult.height;
+            }
+        });
+        return { height: height };
     }
 
     _localTreeRows(locals) {
@@ -366,6 +485,19 @@ class CanvasRenderer {
         return output;
     }
 
+    _countTreeNodes(nodes) {
+        let count = 0;
+        nodes.forEach(node => {
+            count++;
+            if (node.children && node.children.length > 0) {
+                if (!this._collapsedNodes.has(node.name)) {
+                    count += this._countTreeNodes(node.children);
+                }
+            }
+        });
+        return count;
+    }
+
     _drawHeap(area, heaps) {
         this._drawSectionTitle(area, `堆区 (${heaps.length}对象)`, '#f57c00');
         const offset = this.scrollOffsets.heap;
@@ -375,10 +507,16 @@ class CanvasRenderer {
         this.ctx.clip();
         let y = area.y + 30;
         let totalContent = 30;
+        this._heapAnchors = [];
         heaps.forEach((h) => {
-            const hasContent = h.content && h.content.length > 0;
-            const rowH = hasContent ? 44 : 24;
+            const elements = h.elements || [];
+            const hasContent = elements.length > 0 || (h.content && h.content.length > 0);
+            const rowH = elements.length > 0 ? 24 + elements.length * 18 : (hasContent ? 44 : 24);
             const drawY = y - offset;
+            const address = String(h.address || '').match(/0x[0-9a-fA-F]+/)?.[0]?.toLowerCase();
+            if (address) {
+                this._heapAnchors.push({ address, x: area.x + 6, y: drawY + 12 });
+            }
             if (drawY <= area.y + area.h - 10 && drawY >= area.y + 20) {
                 const bgColor = h.is_freed ? '#ffebee' : '#fff3e0';
                 const borderColor = h.is_freed ? '#f44336' : '#ff9800';
@@ -392,7 +530,14 @@ class CanvasRenderer {
                 const status = h.is_freed ? '[已释放]' : `[${h.size}B]`;
                 const text = `${status} @ ${h.address}`;
                 this.ctx.fillText(text.substring(0, 45), area.x + 10, drawY + 16);
-                if (hasContent) {
+                if (elements.length > 0) {
+                    elements.forEach((element, index) => {
+                        this.ctx.fillStyle = '#555';
+                        this.ctx.font = '11px monospace';
+                        const elementText = `${element.name || `[${index}]`}: ${element.type || h.element_type || ''} = ${element.value || ''}`;
+                        this.ctx.fillText(elementText.substring(0, 55), area.x + 14, drawY + 34 + index * 18);
+                    });
+                } else if (hasContent) {
                     this.ctx.fillStyle = '#555';
                     this.ctx.font = '11px monospace';
                     const contentStr = h.content.join(', ');
@@ -430,21 +575,7 @@ class CanvasRenderer {
     }
 
     _drawPointers(area, pointers, layout) {
-        if (!pointers || pointers.length === 0) return;
-        this.ctx.strokeStyle = '#9c27b0';
-        this.ctx.lineWidth = 1.5;
-        this.ctx.fillStyle = '#9c27b0';
-        this.ctx.font = '10px monospace';
-        pointers.forEach((p, i) => {
-            const startY = layout.stack.y + 30 + i * 20;
-            const endY = layout.heap.y + 30 + i * 20;
-            if (startY < layout.stack.y + layout.stack.h && endY < layout.heap.y + layout.heap.h) {
-                this.ctx.beginPath();
-                this.ctx.moveTo(layout.stack.x + layout.stack.w - 5, startY);
-                this.ctx.lineTo(layout.heap.x + 5, endY);
-                this.ctx.stroke();
-                this.ctx.fillText(`${p.name}->${p.target_address}`, layout.stack.x + 10, startY - 3);
-            }
-        });
+        // Pointer-to-allocation relationships are conveyed by the matching
+        // addresses shown in the stack and heap panels; no overlay is drawn.
     }
 }

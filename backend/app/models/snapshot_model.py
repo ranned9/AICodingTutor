@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 from app.models.event_model import MemoryEvent
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class GlobalVariable(BaseModel):
@@ -19,10 +19,24 @@ class LocalVariable(BaseModel):
     value: str
 
 
+class VariableNodeModel(BaseModel):
+    name: str = ""
+    type: str = ""
+    kind: str = "scalar"
+    value: str = ""
+    address: str = ""
+    children: list["VariableNodeModel"] = Field(default_factory=list)
+    available: bool = True
+    unavailable_reason: str = ""
+    truncated: bool = False
+    cycle: bool = False
+
+
 class StackFrame(BaseModel):
     function: str
     args: str = ""
     locals: list[LocalVariable] = Field(default_factory=list)
+    variable_tree: list[VariableNodeModel] = Field(default_factory=list)
 
 
 class HeapObject(BaseModel):
@@ -30,6 +44,8 @@ class HeapObject(BaseModel):
     size: int
     is_freed: bool = False
     content: list[int] = Field(default_factory=list)
+    element_type: str = ""
+    elements: list[VariableNodeModel] = Field(default_factory=list)
 
 
 class PointerReference(BaseModel):
@@ -50,3 +66,5 @@ class MemorySnapshot(BaseModel):
     heap_objects: list[HeapObject] = Field(default_factory=list)
     pointers: list[PointerReference] = Field(default_factory=list)
     is_complete: bool = True
+    engine: str = "gdb"
+    stop_reason: str = ""

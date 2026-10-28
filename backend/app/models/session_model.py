@@ -39,3 +39,4 @@ class DebugStartRequest(BaseModel):
     code: str
     mode: DebugMode = DebugMode.FULL
     breakpoints: list[int] = Field(default_factory=list)
+    engine: str = "gdb"

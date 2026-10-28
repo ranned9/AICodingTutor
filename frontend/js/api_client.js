@@ -21,12 +21,16 @@ class APIClient {
         return this.get(`/api/cases/${caseId}`);
     }
 
-    static async startDebug(code, mode, breakpoints) {
-        return this.post('/api/debug/start', { code, mode, breakpoints });
+    static async startDebug(code, mode, breakpoints, engine = 'legacy') {
+        return this.post('/api/debug/start', { code, mode, breakpoints, engine });
     }
 
     static async step(sessionId) {
         return this.post(`/api/debug/${sessionId}/step`);
+    }
+
+    static async stepInto(sessionId) {
+        return this.post(`/api/debug/${sessionId}/step_into`);
     }
 
     static async continueExecution(sessionId) {
@@ -47,5 +51,9 @@ class APIClient {
 
     static async askAI(sessionId, step, question) {
         return this.post(`/api/debug/${sessionId}/ask`, { step, question });
+    }
+
+    static async diagnose() {
+        return this.get('/api/debug/diagnose');
     }
 }

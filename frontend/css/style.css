@@ -54,8 +54,21 @@ body { font-family: var(--font-ui); background: var(--bg-page); color: var(--col
 }
 .status-idle { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8); }
 .status-running { background: var(--color-warning); color: #fff; }
+.status-paused { background: var(--color-primary); color: #fff; }
+.status-stopped { background: #757575; color: #fff; }
+.status-completed { background: var(--color-success); color: #fff; }
+.status-viewing { background: var(--color-purple); color: #fff; }
 .status-done { background: var(--color-success); color: #fff; }
 .status-error { background: var(--color-danger); color: #fff; }
+
+/* ===== 诊断警告 ===== */
+.diag-warning {
+    padding: 8px 24px;
+    background: #fff3cd;
+    color: #856404;
+    font-size: 13px;
+    border-bottom: 1px solid #ffeaa7;
+}
 
 /* ===== 工具栏 ===== */
 .toolbar {

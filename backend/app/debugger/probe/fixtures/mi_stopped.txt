@@ -1,0 +1,1 @@
+*stopped,reason="breakpoint-hit",bkptno="1",frame={addr="0x00401050",func="main",file="probe.c",fullname="C:\\test\\probe.c",line="22"},thread-id="1",stopped-threads="all"

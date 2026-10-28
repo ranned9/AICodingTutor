@@ -123,17 +123,17 @@ class CodeEditor {
     _updateHighlight() {
         this.highlightLayer.innerHTML = '';
         const lineHeight = 20;
+        if (this.currentLine > 0 && this.currentLine !== this.errorLine) {
+            const top = (this.currentLine - 1) * lineHeight;
+            const bar = document.createElement('div');
+            bar.className = 'highlight-bar';
+            bar.style.top = top + 'px';
+            this.highlightLayer.appendChild(bar);
+        }
         if (this.errorLine > 0) {
             const top = (this.errorLine - 1) * lineHeight;
             const bar = document.createElement('div');
             bar.className = 'highlight-bar error-bar';
-            bar.style.top = top + 'px';
-            this.highlightLayer.appendChild(bar);
-        }
-        if (this.currentLine > 0) {
-            const top = (this.currentLine - 1) * lineHeight;
-            const bar = document.createElement('div');
-            bar.className = 'highlight-bar';
             bar.style.top = top + 'px';
             this.highlightLayer.appendChild(bar);
         }

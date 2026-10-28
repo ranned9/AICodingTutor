@@ -19,6 +19,8 @@
             </div>
         </header>
 
+        <div id="diagWarning" class="diag-warning" style="display:none;"></div>
+
         <div class="toolbar">
             <div class="toolbar-group">
                 <label class="toolbar-label">案例</label>
@@ -31,10 +33,16 @@
                     <option value="step">单步调试</option>
                     <option value="breakpoint">断点调试</option>
                 </select>
+                <label class="toolbar-label">引擎</label>
+                <select id="engineSelect">
+
+                    <option value="gdb">GDB调试</option>
+                </select>
             </div>
             <div class="toolbar-group">
                 <button id="btnRun" class="btn-primary">运行</button>
                 <button id="btnStep" class="btn-secondary" disabled>单步</button>
+                <button id="btnStepInto" class="btn-secondary" disabled>步入</button>
                 <button id="btnContinue" class="btn-secondary" disabled>继续</button>
                 <button id="btnStop" class="btn-danger" disabled>停止</button>
             </div>

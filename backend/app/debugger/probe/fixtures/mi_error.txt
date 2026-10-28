@@ -1,0 +1,1 @@
+3^error,msg="No symbol \"foo\" in current context."

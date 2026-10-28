@@ -3,11 +3,8 @@ import uuid
 from dataclasses import dataclass, field
 
 from app.api.response import ErrorCode
-from app.core.breakpoint_validator import BreakpointValidator
-from app.core.event_detector import EventDetector
-from app.core.instrumenter import Instrumenter
-from app.core.sandbox_executor import SandboxExecutor
-from app.core.snapshot_collector import SnapshotCollector
+from app.debugger.config import DebuggerConfig
+from app.debugger.gdb_engine import GdbDebugEngine
 from app.models.event_model import DebugMode, SessionStatus
 from app.models.session_model import DebugSession
 from app.models.snapshot_model import MemorySnapshot
@@ -27,6 +24,9 @@ class DebugResult:
     snapshots: list[MemorySnapshot] = field(default_factory=list)
     current_step: int = 0
     finished: bool = False
+    status: str = ""
+    stop: object | None = None
+    diagnostics: list = field(default_factory=list)
 
 
 class SessionManager:
@@ -35,171 +35,107 @@ class SessionManager:
         self._snapshots: dict[str, list[MemorySnapshot]] = {}
         self._current_step: dict[str, int] = {}
         self._store = SnapshotStore()
-        self._sandbox = SandboxExecutor()
+        self._gdb_engine = GdbDebugEngine(DebuggerConfig())
 
-    def start_debug(self, code: str, mode: DebugMode, breakpoints: list[int]) -> DebugResult:
-        if not code.strip():
-            return DebugResult(success=False, error_code=ErrorCode.SOURCE_EMPTY)
-
-        valid, invalid_line = BreakpointValidator.validate_breakpoints(code, breakpoints)
-        if not valid:
-            return DebugResult(success=False, error_code=ErrorCode.BREAKPOINT_INVALID)
-
-        session_id = f"sess_{uuid.uuid4().hex[:12]}"
-        session = DebugSession(
-            session_id=session_id,
-            mode=mode,
-            source_code=code,
-            breakpoints=breakpoints,
-            status=SessionStatus.INSTRUMENTING,
-        )
-        self._sessions[session_id] = session
-
-        try:
-            instrumented_code = Instrumenter.instrument(code)
-        except Exception as e:
-            logger.exception("插桩失败: %s", e)
-            session.status = SessionStatus.FAILED
-            return DebugResult(success=False, error_code=ErrorCode.INSTRUMENT_FAILED)
-
-        session.status = SessionStatus.COMPILING
-
-        compile_result, exec_result = self._sandbox.compile_and_execute(instrumented_code)
-
-        if not compile_result.success:
-            session.status = SessionStatus.FAILED
-            return DebugResult(
-                success=False,
-                error_code=ErrorCode.COMPILE_ERROR,
-                error_line=compile_result.error_line,
-                error_message=compile_result.error_desc or "编译错误",
-            )
-
-        if exec_result is None or not exec_result.success:
-            session.status = SessionStatus.FAILED
-            error_code = exec_result.error_code if exec_result else ErrorCode.RUNTIME_ERROR
-            error_msg = exec_result.error_message if exec_result else "执行失败"
-            snapshots = []
-            crash_line = None
-            if exec_result and exec_result.stdout:
-                snapshots = SnapshotCollector.parse_stdout(exec_result.stdout, session_id)
-                if snapshots:
-                    source_lines = code.splitlines()
-                    snapshots = EventDetector.detect_and_label(snapshots, source_lines)
-                    self._snapshots[session_id] = snapshots
-                    self._store.save_sequence(session_id, snapshots)
-                    last_line = snapshots[-1].line if snapshots else 0
-                    crash_line = last_line if last_line > 0 else None
-                    if crash_line and crash_line <= len(source_lines):
-                        def _is_safe_stmt(s):
-                            s = s.strip()
-                            return s.startswith('return') or s.startswith('printf')
-                        if _is_safe_stmt(source_lines[crash_line - 1]):
-                            for snap in reversed(snapshots):
-                                if snap.line > 0 and snap.line <= len(source_lines):
-                                    snap_source = source_lines[snap.line - 1]
-                                    if not _is_safe_stmt(snap_source):
-                                        crash_line = snap.line
-                                        break
+    def start_debug(self, code: str, mode: DebugMode, breakpoints: list[int],
+                    engine: str = "gdb") -> DebugResult:
+        if engine != "gdb":
+            return DebugResult(success=False, error_code=ErrorCode.UNKNOWN_ERROR,
+                               error_message=f"不支持的调试引擎: {engine}")
+        result = self._gdb_engine.start(code, mode.value, breakpoints)
+        if not result.success:
+            error_code = {
+                "SOURCE_EMPTY": ErrorCode.SOURCE_EMPTY,
+                "COMPILE_ERROR": ErrorCode.COMPILE_ERROR,
+                "TIMEOUT": ErrorCode.SANDBOX_LIMIT,
+            }.get(result.error_code, ErrorCode.UNKNOWN_ERROR)
             return DebugResult(
                 success=False,
                 error_code=error_code,
-                error_message=error_msg,
-                crash_line=crash_line,
-                session_id=session_id,
-                snapshots=snapshots,
+                error_message=result.error_message,
+                diagnostics=result.diagnostics,
             )
-
-        try:
-            snapshots = SnapshotCollector.parse_stdout(exec_result.stdout, session_id)
-            source_lines = code.splitlines()
-            snapshots = EventDetector.detect_and_label(snapshots, source_lines)
-        except Exception as e:
-            logger.exception("快照解析失败: %s", e)
-            snapshots = []
-
-        self._snapshots[session_id] = snapshots
-        self._current_step[session_id] = 0
-        session.total_steps = len(snapshots)
-        self._store.save_sequence(session_id, snapshots)
-
-        if mode == DebugMode.FULL:
-            session.status = SessionStatus.COMPLETED
-            return DebugResult(
-                success=True,
-                session_id=session_id,
-                snapshots=snapshots,
-                finished=True,
-            )
-        else:
-            session.status = SessionStatus.PAUSED
-            first_snap = snapshots[0] if snapshots else None
-            return DebugResult(
-                success=True,
-                session_id=session_id,
-                snapshots=[first_snap] if first_snap else [],
-                current_step=0,
-                finished=False,
-            )
+        session = DebugSession(
+            session_id=result.session_id,
+            mode=mode,
+            source_code=code,
+            breakpoints=breakpoints,
+            status={
+                "completed": SessionStatus.COMPLETED,
+                "failed": SessionStatus.FAILED,
+                "stopped": SessionStatus.STOPPED,
+            }.get(result.status, SessionStatus.PAUSED),
+        )
+        self._sessions[result.session_id] = session
+        snapshots = result.snapshots or ([result.snapshot] if result.snapshot else [])
+        self._snapshots[result.session_id] = snapshots
+        self._current_step[result.session_id] = result.current_step
+        return DebugResult(
+            success=True,
+            session_id=result.session_id,
+            snapshots=snapshots,
+            current_step=result.current_step,
+            finished=result.status in {"completed", "failed", "stopped"},
+            status=result.status,
+            stop=result.stop,
+        )
 
     def step(self, session_id: str) -> DebugResult:
-        session = self._sessions.get(session_id)
-        if session is None:
-            return DebugResult(success=False, error_code=ErrorCode.NOT_FOUND)
+        return self._gdb_step(session_id, "step_over")
 
-        snapshots = self._snapshots.get(session_id, [])
-        current = self._current_step.get(session_id, 0)
+    def step_into(self, session_id: str) -> DebugResult:
+        return self._gdb_step(session_id, "step_into")
 
-        if current + 1 >= len(snapshots):
-            session.status = SessionStatus.COMPLETED
-            return DebugResult(success=True, session_id=session_id, finished=True)
-
-        current += 1
-        self._current_step[session_id] = current
+    def _gdb_step(self, session_id: str, action: str) -> DebugResult:
+        if action == "step_over":
+            result = self._gdb_engine.step(session_id)
+        elif action == "step_into":
+            result = self._gdb_engine.step_into(session_id)
+        else:
+            result = self._gdb_engine.continue_execution(session_id)
+        if not result.success:
+            return DebugResult(success=False, error_code=ErrorCode.UNKNOWN_ERROR,
+                               error_message=result.error_message,
+                               session_id=session_id)
+        if result.snapshot:
+            self._snapshots.setdefault(session_id, []).append(result.snapshot)
+        self._current_step[session_id] = result.current_step
+        finished = result.status in {"completed", "failed", "stopped"}
+        if result.status == "completed":
+            session = self._sessions.get(session_id)
+            if session:
+                session.status = SessionStatus.COMPLETED
+        elif result.status == "failed":
+            session = self._sessions.get(session_id)
+            if session:
+                session.status = SessionStatus.FAILED
+        elif result.status == "stopped":
+            session = self._sessions.get(session_id)
+            if session:
+                session.status = SessionStatus.STOPPED
         return DebugResult(
             success=True,
             session_id=session_id,
-            snapshots=[snapshots[current]],
-            current_step=current,
-            finished=False,
+            snapshots=[result.snapshot] if result.snapshot else [],
+            current_step=result.current_step,
+            finished=finished,
+            status=result.status,
+            stop=result.stop,
         )
 
     def continue_execution(self, session_id: str) -> DebugResult:
-        session = self._sessions.get(session_id)
-        if session is None:
-            return DebugResult(success=False, error_code=ErrorCode.NOT_FOUND)
-
-        snapshots = self._snapshots.get(session_id, [])
-        current = self._current_step.get(session_id, 0)
-        breakpoints = set(session.breakpoints)
-
-        for i in range(current + 1, len(snapshots)):
-            if snapshots[i].line in breakpoints:
-                self._current_step[session_id] = i
-                return DebugResult(
-                    success=True,
-                    session_id=session_id,
-                    snapshots=[snapshots[i]],
-                    current_step=i,
-                    finished=False,
-                )
-
-        session.status = SessionStatus.COMPLETED
-        self._current_step[session_id] = len(snapshots) - 1
-        return DebugResult(
-            success=True,
-            session_id=session_id,
-            snapshots=[snapshots[-1]] if snapshots else [],
-            current_step=len(snapshots) - 1,
-            finished=True,
-        )
+        return self._gdb_step(session_id, "continue")
 
     def stop(self, session_id: str) -> DebugResult:
+        result = self._gdb_engine.stop(session_id)
         session = self._sessions.get(session_id)
-        if session is None:
-            return DebugResult(success=False, error_code=ErrorCode.NOT_FOUND)
-        session.status = SessionStatus.COMPLETED
-        return DebugResult(success=True, session_id=session_id)
+        if session and result.success:
+            session.status = SessionStatus.STOPPED
+        return DebugResult(success=result.success, session_id=session_id,
+                           status="stopped")
+
+    def shutdown(self) -> None:
+        self._gdb_engine.shutdown()
 
     def get_session(self, session_id: str) -> DebugSession | None:
         return self._sessions.get(session_id)
