@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C语言内存时序可视化调试实训平台</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <header class="app-header">
+            <div class="header-left">
+                <h1>C语言内存时序可视化调试实训平台</h1>
+                <span class="header-subtitle">C 语言执行轨迹与内存教学</span>
+            </div>
+            <div class="header-right">
+                <span id="caseInfo" class="case-info">未加载案例</span>
+                <span id="runStatus" class="run-status status-idle">待运行</span>
+            </div>
+        </header>
+
+        <div class="toolbar">
+            <div class="toolbar-group">
+                <label class="toolbar-label">案例</label>
+                <select id="caseSelector">
+                    <option value="">选择案例...</option>
+                </select>
+                <label class="toolbar-label">模式</label>
+                <select id="debugMode">
+                    <option value="full">完整执行</option>
+                    <option value="step">单步调试</option>
+                    <option value="breakpoint">断点调试</option>
+                </select>
+            </div>
+            <div class="toolbar-group">
+                <button id="btnRun" class="btn-primary">运行</button>
+                <button id="btnStep" class="btn-secondary" disabled>单步</button>
+                <button id="btnContinue" class="btn-secondary" disabled>继续</button>
+                <button id="btnStop" class="btn-danger" disabled>停止</button>
+            </div>
+        </div>
+
+        <main class="app-main">
+            <section class="panel-left">
+                <div class="panel-header">
+                    <span class="panel-title">main.c</span>
+                    <span class="panel-tag">C</span>
+                </div>
+                <div id="codeEditor" class="code-editor"></div>
+                <div class="change-summary" id="changeSummary">
+                    <div class="change-summary-title">本步变化</div>
+                    <div class="change-summary-content" id="changeSummaryContent">运行案例后，这里会显示当前步骤的内存变化</div>
+                </div>
+            </section>
+            <section class="panel-right">
+                <div class="panel-header">
+                    <span class="panel-title">内存视图</span>
+                    <span id="memStepInfo" class="panel-info">—</span>
+                </div>
+                <div class="visualization-area">
+                    <canvas id="memoryCanvas" width="600" height="500"></canvas>
+                </div>
+                <div class="legend">
+                    <span class="legend-item"><span class="legend-dot" style="background:#1976d2"></span>全局</span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#388e3c"></span>栈</span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#f57c00"></span>堆</span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#9c27b0"></span>指针</span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#f44336"></span>错误</span>
+                </div>
+                <div class="timeline-area">
+                    <div class="timeline-info">
+                        <span id="timelineLabel">第 0 / 0 步</span>
+                        <span id="timelineLine">行 —</span>
+                    </div>
+                    <div id="timelineSlider" class="timeline-slider"></div>
+                </div>
+                <div class="ai-panel">
+                    <div class="ai-panel-header">AI 教学助手</div>
+                    <div id="aiAnswer" class="ai-answer">运行案例后，可以在当前快照节点向 AI 提问，获取内存变化的解释</div>
+                    <div class="ai-input-area">
+                        <input type="text" id="aiQuestion" placeholder="在当前快照节点提问...">
+                        <button id="btnAsk" class="btn-primary">提问</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+        <div id="toast" class="toast hidden"></div>
+    </div>
+    <script src="/js/api_client.js"></script>
+    <script src="/js/code_editor.js"></script>
+    <script src="/js/canvas_renderer.js"></script>
+    <script src="/js/timeline_slider.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

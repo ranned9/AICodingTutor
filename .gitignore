@@ -1,0 +1,43 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- 虚拟环境 ----
+.venv/
+venv/
+env/
+ENV/
+
+# ---- 运行时数据（会话快照、临时产物），不要入库 ----
+data/snapshots/
+data/tmp/
+data/*.db
+data/*.sqlite3
+data/*.log
+
+# ---- IDE / 工具产物 ----
+.codeartsdoer/
+.merkle-snapshot.json
+.vscode/
+.idea/
+*.swp
+
+# ---- 本地配置与密钥 ----
+.env
+.env.*
+!.env.example
+*.local.json
+
+# ---- 系统 ----
+Thumbs.db
+.DS_Store
+desktop.ini
